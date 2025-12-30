@@ -1,0 +1,67 @@
+DEVICE          : cuda              # device used for training and evaluation (cpu, cuda, cuda0, cuda1, ...)
+IMG_SAVE_DIR    : 'results/predicted_SNGamestate_results'
+LOG_DIR         : 'results/court_SNGamestate_results'
+DATA_DIR        : 'data/SoccerNetGS'
+JERSEY_MODE     : 'CLIP' #'LLAMA'
+
+TRACKER:
+  MODEL_PATH    : 'checkpoints/yolox_soccernet.pth.tar'
+  EXP_FILE      : 'exp/yolox_x_soccernet.py'
+  FP16          : False
+  FUSE          : False
+  TRT           : False
+  FPS           : 25
+  CONF          : 0.1
+  NMS_THRESH        : 0.7
+  TRACK_HIGH_THRESH : 0.6   
+  TRACK_LOW_THRESH  : 0.05
+  NEW_TRACK_THRESH  : 0.7      
+  TRACK_BUFFER      : 60
+  MATCH_THRESH      : 0.8  
+  TSIZE             : (800,1440)
+  ASPECT_RATIO_THRESH     : 1.6
+  MIN_BOX_AREA            : 10
+  PROXIMITY_THRESH        : 0.5    
+  APPEARANCE_THRESH       : 0.25       
+  WITH_REID               : True
+
+
+REID:
+  MODEL_PATH    : 'checkpoints/sports_model.pth.tar-60'
+  IMAGE_SIZE    : [256, 128]
+
+SFR:
+  MODEL_PATH    : 'checkpoints/SoccernetGSR_EfficientNet_Best.pth'
+  KPTS_PATH     : 'sfr/template/soccernet_template_97.npy' 
+  TEMPLATE_PATH : 'sfr/template/Radar.png'
+  SPORTS_TYPE   : 'soccer'
+  NUM_KPTS      : 97 
+  NUM_LINES     : 21
+  DIST_THRES    : 30
+  CONF_THRES    : 0.8
+  IMAGE_SIZE    : [384, 384]
+  TEMPLATE_SIZE : [125, 78]
+  TOP_KPTS :  [3, 4, 64, 65] 
+
+GTA:
+  MODEL_PATH    : 'checkpoints/sports_model.pth.tar-60'
+  DATA_PATH     : 'data/SoccerNetGS'
+  PRED_DIR      : 'data/SoccerNetGS'
+  TRACKER       : 'DeepEIoU'
+  DATASET       : 'SoccerNet'
+  TRACK_SRC     : 'data/SoccerNetGS/DeepEIoU_Tracklets'
+  REID_MODEL    : 'OSNet'
+  USE_SPLIT     : True
+  MIN_LEN       : 100
+  EPS           : 0.6
+  MIN_SAMPLES   : 10
+  MAX_K         : 3
+  USE_CONNECT   : True
+  SPATIAL_FACTOR      : 1
+  MERGE_DIST_THRES    : 0.4
+
+LLAMA:
+  MODEL_PATH    : 'checkpoints/lora_model_jersey_role_soccernet'
+
+CLIP:
+  MODEL_PATH    : 'checkpoints/CLIP_Jersey.pth'

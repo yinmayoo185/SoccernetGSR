@@ -1,0 +1,50 @@
+Metadata-Version: 2.4
+Name: yolox
+Version: 0.1.0
+Author: basedet team
+Classifier: Programming Language :: Python :: 3
+Classifier: Operating System :: OS Independent
+Requires-Python: >=3.6
+Dynamic: author
+Dynamic: classifier
+Dynamic: description
+Dynamic: requires-python
+
+# windows
+
+- Install (gpu driver, visual studio (with cpp compiler), cuda, cudnn, ...)
+- Install conda for virtual env
+
+# create virtual env for gait event det
+conda create -n GSRPipeline python=3.12
+conda activate GSRPipeline
+
+# install pytorch (use official installation on pytorch website [recommend])
+pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+
+[//]: # (conda install pytorch torchvision torchaudio pytorch-cuda=12.1 -c pytorch -c nvidia)
+
+# install additional libraries
+pip install -r requirements.txt
+
+python setup.py develop
+pip install cython; pip install 'git+https://github.com/cocodataset/cocoapi.git#subdirectory=PythonAPI'
+
+pip install cython_bbox
+
+
+# USAGE
+[activate the inv]
+# step 1 : python3 soccernet_game_state_reconstruction.py  # generate_soccernet_results for with role, jersey number, and team
+# step 2 : python3 write_json_file_team.py # to generate prediction results for evaluation with role, jersey number, and team 
+# Use the write_json_results.py to generate json files without role, jersey number, and team 
+# step 3 : # python3 ./sn-trackeval/scripts/run_soccernet_gs.py --GT_FOLDER /media/ymo/SSD_2TB/Projects/soccernet/data/SoccerNetGS
+#   --TRACKERS_FOLDER /media/ymo/SSD_2TB/SoccerNet-GameState-2025/Pred_SN_GS2025/ --TRACKER_SUB_FOLDER "" --SPLIT_TO_EVAL "valid"
+# (Please prepare and follow the instructions in the README.md file in the sn-trackeval for evaluation)
+
+# use this one for evaluation
+# python3 ./sn-trackeval/scripts/run_soccernet_gs.py --GT_FOLDER /media/ymo/SSD_2TB/Projects/soccernet/data/SoccerNetGS/ 
+# --TRACKERS_FOLDER /media/ymo/SSD_2TB/SoccerNet-GameState-2025/Pred_SN_GS2025/SoccerNetGS/ --TRACKER_SUB_FOLDER "" --SPLIT_TO_EVAL "test"
+
+# step 4 : python3 visualize_ground_truth.py  # to visualize ground truth
+# step 5 : python3 visualize_prediction_results.py  # to visualize predictions

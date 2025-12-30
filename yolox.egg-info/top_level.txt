@@ -1,0 +1,17 @@
+CLIP
+GTA
+build
+checkpoints
+configs
+data_process
+exp
+jersey
+reid
+reid_checkpoints
+results
+sfr
+sn-trackeval
+temp
+unsloth_compiled_cache
+utils
+yolox
