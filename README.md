@@ -57,7 +57,7 @@ data/
     test/
     challenge/
 ```
-Update `configs/config.yaml` with the correct `DATA_DIR`.
+Update `conf 4: Format Conversionigs/config.yaml` with the correct `DATA_DIR`.
 
 ## Usage
 
@@ -67,7 +67,7 @@ Download the required model weights from Google Drive.
 python download_properties.py
 ```
 
-### Step 2: Homography Estimation
+### Step 2:  4: Format ConversionHomography Estimation
 Run `kpts.py` to generate homography matrices (`.npy` files) for the video frames.
 ```bash
 python kpts.py
@@ -81,13 +81,19 @@ You can choose between **CLIP** (faster) and **LLAMA** (more accurate) for jerse
 python inference_soccernetGSR.py
 ```
 
-### Step 4: Format Conversion
+### Step 4: Tracking Results Post Processing using IDATR
+Perform ID-Aware Tracklets Refinement (IDATR) using the initial tracklet results from step 3.
+```bash
+./refine_tracklets.sh
+```
+
+### Step 5: Format Conversion
 Convert the inference results into the required JSON format for evaluation.
 ```bash
 python write_json_file_team.py
 ```
 
-### Step 5: Evaluation
+### Step 6: Evaluation
 Use the `sn-trackeval` toolkit to evaluate the results.
 ```bash
 python ./sn-trackeval/scripts/run_soccernet_gs.py \
@@ -97,7 +103,7 @@ python ./sn-trackeval/scripts/run_soccernet_gs.py \
     --SPLIT_TO_EVAL "test"
 ```
 
-### Step 6: Visualize Prediction Results
+### Step 7: Visualize Prediction Results
 Run the script to visualize the generated JSON files:
 
 ```bash

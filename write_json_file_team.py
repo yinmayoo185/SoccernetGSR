@@ -9,10 +9,7 @@ from urllib.request import urlopen
 from matplotlib.colors import LinearSegmentedColormap
 import matplotlib.pyplot as plt
 from PIL import Image
-from mplsoccer import Pitch
-# from highlight_text import ax_text
 
-from mplsoccer import VerticalPitch, add_image, FontManager, Sbopen
 
 # Correct column names for the court meter file.
 # (Assuming the file contains 12 comma‐separated values per row.)
@@ -517,7 +514,7 @@ def main(vdo_clip_path, vdo_path, vdo_name):
     output_json_path = os.path.join(vdo_path, f"{vdo_name}.json")
 
     # The image-space tracking file (sngs file)
-    sngs_path = os.path.join(vdo_path, f'interpolate_{vdo_name}.txt')
+    sngs_path = os.path.join(vdo_path, f'refined_{vdo_name}.txt')
 
     if not os.path.exists(court_meter_path):
         print(f"Missing files for {vdo_name}, skipping...")
@@ -546,11 +543,20 @@ def main(vdo_clip_path, vdo_path, vdo_name):
 
 
 if __name__ == "__main__":
-    data_sets = ['test']
-    root_directory = "data/SoccerNetGS/"
+    import yaml
+    import argparse
 
-    for data_set in data_sets:
-        folder_path = os.path.join(root_directory, data_set)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", type=str, default="configs/config.yaml")
+    args = parser.parse_args()
+
+    with open(args.config, 'r') as f:
+        cfg = yaml.safe_load(f)
+
+    data_sets = ['test']
+
+    for split in data_sets:
+        folder_path = os.path.join(cfg['DATA_DIR'], split)
         for vdo_name in sorted(os.listdir(folder_path)):
             vdo_path = os.path.join(folder_path, vdo_name)
             if not os.path.isdir(vdo_path):

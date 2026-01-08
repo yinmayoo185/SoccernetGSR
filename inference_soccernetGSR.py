@@ -30,7 +30,7 @@ from yolox.utils.transforms import get_transforms
 
 # LLaMA-Vision (jersey/role) related imports
 from transformers import TextStreamer
-from jersey_model.CLIPFinetune import CLIPFinetune1
+from jersey_model.CLIPFinetune import CLIPFinetune
 import clip
 
 warnings.filterwarnings("ignore")
@@ -461,7 +461,7 @@ class GSRPipeline:
         if self.jersey_mode == 'CLIP':
             clip_cfg = self.cfg['CLIP']
             model_dir = clip_cfg['MODEL_PATH']
-            self.jersey_model = CLIPFinetune1()
+            self.jersey_model = CLIPFinetune()
             self.jersey_model.load_state_dict(torch.load(model_dir, weights_only=False))
             self.jersey_model = self.jersey_model.to(self.device)
             self.jersey_model.eval()

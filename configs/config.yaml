@@ -3,6 +3,7 @@ IMG_SAVE_DIR    : 'results/predicted_SNGamestate_results'
 LOG_DIR         : 'results/court_SNGamestate_results'
 DATA_DIR        : 'data/SoccerNetGS'
 JERSEY_MODE     : 'CLIP' #'LLAMA'
+DATA_SETS       : ['test']
 
 TRACKER:
   MODEL_PATH    : 'checkpoints/yolox_soccernet.pth.tar'
@@ -43,20 +44,10 @@ SFR:
   TEMPLATE_SIZE : [125, 78]
   TOP_KPTS :  [3, 4, 64, 65] 
 
-GTA:
+IDATR:
   MODEL_PATH    : 'checkpoints/sports_model.pth.tar-60'
-  DATA_PATH     : 'data/SoccerNetGS'
-  PRED_DIR      : 'data/SoccerNetGS'
-  TRACKER       : 'DeepEIoU'
-  DATASET       : 'SoccerNet'
-  TRACK_SRC     : 'data/SoccerNetGS/DeepEIoU_Tracklets'
-  REID_MODEL    : 'OSNet'
-  USE_SPLIT     : True
-  MIN_LEN       : 100
-  EPS           : 0.6
-  MIN_SAMPLES   : 10
-  MAX_K         : 3
-  USE_CONNECT   : True
+  GAP_LEN       : 25
+  USE_JN        : True
   SPATIAL_FACTOR      : 1
   MERGE_DIST_THRES    : 0.4
 
