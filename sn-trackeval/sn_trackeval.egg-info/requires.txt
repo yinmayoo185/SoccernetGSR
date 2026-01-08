@@ -1,0 +1,10 @@
+numpy
+scipy
+pycocotools
+matplotlib
+opencv_python
+scikit_image
+pytest
+Pillow
+tqdm
+tabulate

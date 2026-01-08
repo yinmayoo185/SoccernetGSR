@@ -1,0 +1,42 @@
+[project]
+name = "sn-trackeval"
+version = "0.3.0"
+authors = [
+    {name = "Vladimir Somers", email = "somers.vladimir@gmail.com"},
+    {name = "Jonathon Luiten", email = "jonoluiten@gmail.com"},
+    {name = "Arne Hoffhues", email = "no-email@example.com"},
+    {name = "Victor Joos", email = "victorjoosdtb@gmail.com"},
+]
+description = "Code for evaluating object tracking"
+readme = "Readme.md"
+urls = {homepage = "https://github.com/SoccerNet/sn-trackeval"}
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering",
+]
+license = {file = "LICENSE"}
+
+dependencies = [
+    "numpy", # ==1.18.1",
+    "scipy", # ==1.4.1",
+    "pycocotools", # ==2.0.2",
+    "matplotlib", # ==3.2.1",
+    "opencv_python", # ==4.4.0.46",
+    "scikit_image", # ==0.16.2",
+    "pytest", # ==6.0.1",
+    "Pillow", # ==8.1.2",
+    "tqdm", # ==4.64.0",
+    "tabulate",
+]
+
+[tool.setuptools.packages.find]
+include = ["trackeval*"]
+
+[build-system]
+requires = [
+    "setuptools>=42",
+]
+build-backend = "setuptools.build_meta"
