@@ -1,6 +1,15 @@
 # SoccerNet Game State Reconstruction (GSR)
 
-This repository contains the implementation for the SoccerNet Game State Reconstruction (GSR) task. It includes modules for camera calibration (homography estimation), player tracking, re-identification (ReID), and role/jersey number recognition using CLIP and LLaMA models.
+## Broadcast2Pitch: Game State Reconstruction from Unconstrained Soccer Videos (WACV 2026)
+
+**Winner of the SoccerNet Game State Reconstruction 2025 Challenge**
+
+**Affiliation:** Korea Institute of Science and Technology (KIST), Seoul, Republic of Korea
+
+This repository contains the official implementation for the SoccerNet Game State Reconstruction (GSR) task. It includes modules for camera calibration (homography estimation), player tracking, re-identification (ReID), and role/jersey number recognition using CLIP and LLaMA models.
+
+> [!NOTE]
+> The homography estimation (Sports Field Registration) approach in this repository follows the WACV paper approach, which differs slightly from the method described in our [arXiv paper](https://arxiv.org/pdf/2508.19182).
 
 ## Installation
 
@@ -128,3 +137,7 @@ This project builds upon:
 - [GTA](https://github.com/sjc042/gta-link)
 - [Torchreid](https://github.com/KaiyangZhou/deep-person-reid)
 - [CLIP](https://github.com/openai/CLIP)
+
+## Contact
+
+For inquiries about our work, please contact Jinwook Kim <jinwook.kim21@gmail.com>.
