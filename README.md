@@ -4,7 +4,7 @@
 
 **Winner of the SoccerNet Game State Reconstruction 2025 Challenge**
 
-**Affiliation:** Korea Institute of Science and Technology (KIST), Seoul, Republic of Korea
+**Affiliation:** Human Data Intelligence Lab, Korea Institute of Science and Technology (KIST), Seoul, Republic of Korea
 
 This repository contains the official implementation for the SoccerNet Game State Reconstruction (GSR) task. It includes modules for camera calibration (homography estimation), player tracking, re-identification (ReID), and role/jersey number recognition using CLIP and LLaMA models.
 
