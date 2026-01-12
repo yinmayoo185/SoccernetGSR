@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-PYTHON_EXEC="/home/yewon/miniconda3/envs/deeptracking/bin/python"
+PYTHON_EXEC="/home/ymo/anaconda3/envs/SoccernetGSR/bin/python" # replace conda env
 
 echo "Removing double bboxes..."
 $PYTHON_EXEC IDATR/rmv_doub_bbox.py

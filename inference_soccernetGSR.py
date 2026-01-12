@@ -14,6 +14,7 @@ import cv2
 import numpy as np
 import pandas as pd
 import torch
+import numpy as np
 import torch.nn.functional as F
 from natsort import natsorted
 from PIL import Image
@@ -242,19 +243,7 @@ def bbox_distance(bbox1, bbox2):
     return np.sqrt((center_x1 - center_x2) ** 2 + (center_y1 - center_y2) ** 2)
 
 
-def pixel_to_meter_all(x_bottom_left, y_bottom_left, x_bottom_right, y_bottom_right, x_bottom_middle, y_bottom_middle,
-                       center_x_px, center_y_px):
-    """
-    Convert pixel coordinates back to meters.
-    """
-    x_left = x_bottom_left - center_x_px
-    y_left = y_bottom_left - center_y_px
-    x_right = x_bottom_right - center_x_px
-    y_right = y_bottom_right - center_y_px
-    x_middle = x_bottom_middle - center_x_px
-    y_middle = y_bottom_middle - center_y_px
 
-    return x_left, y_left, x_right, y_right, x_middle, y_middle
 
 
 ##########################################
@@ -479,22 +468,12 @@ class GSRPipeline:
     def process_video(self, video_path, vis_folder, batch_size=4):
         # Updated key names to include "color"
         key_names = ["frame", "track_id", "x", "y", "w", "h", "score", "role", "jersey", "color", "team"]
-        # Updated court names with the desired order.
-        court_names_meter = ["frame", "track_id", "x_left", "y_left", "x_right", "y_right", "x_middle", "y_middle", "role", "jersey", "color", "team"]
-        court_names_pixel = ["frame", "track_id", "x", "y", "role", "jersey", "color", "team"]
         instruction = "Classify Role, Jersey Number and Jersey Color"
 
         results = {key: [] for key in key_names}
-        player_position_results_meter = {key: [] for key in court_names_meter}
-        player_position_results_pixel = {key: [] for key in court_names_pixel}
 
-        # Prepare SFR template info
-        template_kpts = np.load(self.sfr_cfg['KPTS_PATH'])
-        template = cv2.imread(self.sfr_cfg['TEMPLATE_PATH'])
         # Use a transform that resizes images to a fixed size (e.g., 256x128) for re‑ID features
         im_transforms = get_transforms(image_size=(256, 128)) 
-        center_x_px = template.shape[1] / 2
-        center_y_px = template.shape[0] / 2
 
         # Create DataLoader for batched image reading
         dataset = VideoDataset(video_path)
@@ -519,12 +498,6 @@ class GSRPipeline:
                 img_info = img_infos[i]
 
                 img_path = paths[i]
-                homo_path = os.path.splitext(img_path)[0] + ".npy"
-                if os.path.exists(homo_path):
-                    homography = np.load(homo_path)
-                else:
-                    # print(f"Homography file {homo_path} not found for frame {frame_id}. Using identity.")
-                    homography = np.eye(3, dtype=np.float32)
 
                 height, width, _ = frame.shape
                 output = outputs_batch[i]
@@ -671,67 +644,22 @@ class GSRPipeline:
                 for (_, res) in temp_results:
                     for key, data in zip(key_names, res):
                         results[key].append(data)
-
-                # Compute court coordinates for each online target and add them to the output.
-                for (j, res) in temp_results:
-                    t = online_targets[j]
-                    tlwh = t.last_tlwh
-                    x, y, w, h = tlwh
-                    x_e = x + w
-                    y_e = y + h
-                    x_center = x + ((x_e - x) // 2)
-                    x_bottom_left = x
-                    y_bottom_left = y_e
-                    x_bottom_right = x_e
-                    y_bottom_right = y_e
-                    x_bottom_middle = x_center
-                    y_bottom_middle = y_e
-                    pitch_position = np.array([[x_bottom_left, y_bottom_left, 1.],
-                                               [x_bottom_right, y_bottom_right, 1.],
-                                               [x_bottom_middle, y_bottom_middle, 1.]])
-                    pitch_position_img = pitch_position.T
-                    transformed_pitch = np.dot(homography, pitch_position_img)
-                    player_position_pitch = (transformed_pitch[:2] / transformed_pitch[2]).T
-                    player_position_pitch = np.array(player_position_pitch)
-                    x_left, y_left, x_right, y_right, x_middle, y_middle = pixel_to_meter_all(
-                        player_position_pitch[0][0],
-                        player_position_pitch[0][1],
-                        player_position_pitch[1][0],
-                        player_position_pitch[1][1],
-                        player_position_pitch[2][0],
-                        player_position_pitch[2][1],
-                        center_x_px, center_y_px)
-                    # Build court outputs.
-                    # For pixel: [frame, track_id, x, y, role, jersey, color, team]
-                    court_result_pixel = [frame_id, t.track_id,
-                                          int(player_position_pitch[2][0]),
-                                          int(player_position_pitch[2][1]),
-                                          res[7], res[8], res[9], res[10]]
-                    # For meter: [frame, track_id, x_left, y_left, x_right, y_right, x_middle, y_middle, role, jersey, color, team]
-                    court_result_meter = [frame_id, t.track_id,
-                                          x_left, y_left, x_right, y_right, x_middle, y_middle,
-                                          res[7], res[8], res[9], res[10]]
-                    for key, data in zip(court_names_meter, court_result_meter):
-                        player_position_results_meter[key].append(data)
-                    for key, data in zip(court_names_pixel, court_result_pixel):
-                        player_position_results_pixel[key].append(data)
                 timer.toc()
 
         # ---------------------------
         # Convert dict -> DataFrame
         track_df = pd.DataFrame(results)
-        pixel_df = pd.DataFrame(player_position_results_pixel)
-        meter_df = pd.DataFrame(player_position_results_meter)
+        # ---------------------------
+        # Convert dict -> DataFrame
+        track_df = pd.DataFrame(results)
 
         # ---------------------------
         # Apply global color -> team assignment
         # (Optional, if you want consistent color->team in all 3 dataframes)
         track_df = global_color_team_assignment(track_df)
-        pixel_df = global_color_team_assignment(pixel_df)
-        meter_df = global_color_team_assignment(meter_df)
 
         # Return them
-        return track_df, pixel_df, meter_df, list(dataset.img_paths)
+        return track_df, list(dataset.img_paths)
 
     def run(self, data_sets):
         data_dir = self.cfg['DATA_DIR']
@@ -758,7 +686,7 @@ class GSRPipeline:
                 os.makedirs(video_output_dir, exist_ok=True)
                 
                 # Run processing
-                track_df, initial_positions_pixel_df, initial_positions_meter_df, frame_list = self.process_video(
+                track_df, frame_list = self.process_video(
                     img1_path, 
                     video_output_dir, 
                     batch_size=4
@@ -766,23 +694,15 @@ class GSRPipeline:
                 
                 # Unify team assignments
                 track_df = unify_team_assignments(track_df)
-                initial_positions_pixel_df = unify_team_assignments(initial_positions_pixel_df)
-                initial_positions_meter_df = unify_team_assignments(initial_positions_meter_df)
 
                 # Define filenames
                 # Using video_output_dir as the output_dir context
                 interpolate_track_filename = osp.join(video_output_dir, f'interpolate_{Path(video_output_dir).stem}.txt')
-                interpolate_court_pixel_filename = osp.join(video_output_dir, f'court_pixel_{Path(video_output_dir).stem}.txt')
-                interpolate_court_meter_filename = osp.join(video_output_dir, f'court_meter_{Path(video_output_dir).stem}.txt')
 
                 # Format frame column
                 track_df['frame'] = track_df['frame'].astype(str).str.zfill(6)
-                initial_positions_pixel_df['frame'] = initial_positions_pixel_df['frame'].astype(str).str.zfill(6)
-                initial_positions_meter_df['frame'] = initial_positions_meter_df['frame'].astype(str).str.zfill(6)
 
                 # Save results
-                initial_positions_pixel_df.to_csv(interpolate_court_pixel_filename, index=False, header=False)
-                initial_positions_meter_df.to_csv(interpolate_court_meter_filename, index=False, header=False)
                 track_df.to_csv(interpolate_track_filename, index=False, header=False)
                 
                 print(f"Saved tracking results to {interpolate_track_filename}")

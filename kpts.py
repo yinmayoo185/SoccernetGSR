@@ -1353,7 +1353,7 @@ def predict(
     checkpoints="checkpoints/SoccernetGSR_EfficientNet_Best.pth",
     template_image="template/Pitch_Radar.png",
     template_npy="template/soccernet_template_97.npy",
-    save_viz=True,
+    save_viz=False,
     verbose=True,
     npy_subfolder="npy_files",
 ):
@@ -1463,6 +1463,6 @@ if __name__ == "__main__":
             checkpoints="checkpoints/SoccernetGSR_EfficientNet_Best.pth",
             template_image="template/Pitch_Radar.png",
             template_npy="template/soccernet_template_97.npy",
-            save_viz=True,
+            save_viz=False,
             verbose=True,
         )
