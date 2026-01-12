@@ -425,8 +425,8 @@ def write_predictions_json(tracklet_results, court_meter_df, sngs_df, output_jso
                 continue
         track_data = matching_rows.iloc[0]
 
-        # Build the image_id, for example "2" + video_id + zero-padded frame number
-        image_id = f"2{video_id}{str(frame_num).zfill(7)}"
+        # Build the image_id, for example "3" + video_id + zero-padded frame number (6 digits)
+        image_id = f"3{video_id}{str(frame_num).zfill(6)}"
 
         # Get the track-level attributes if available, otherwise use defaults.
         if str(track_id) in tracklet_results:
