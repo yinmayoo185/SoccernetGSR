@@ -595,144 +595,69 @@ class SoccernetDataset(Dataset):
 
 def extract_line_points_from_heatmap(
     heatmap: np.ndarray,
-    all_lines_heatmap: np.ndarray = None,
-    threshold: float = 0.8,
-    high_intensity_threshold: float = 0.96,
-    num_samples: int = 100,
-    num_random_points: int = 100,
-    min_length: float = 100,
-    all_lines_weight: float = 0.5
+    threshold: float = 0.9,
+    num_random_points: int = 100
 ) -> np.ndarray:
     """
-    Robustly extract high‐intensity skeleton points from a line heatmap,
-    then throw away any that lie more than `max_outlier_dist` px from
-    the fitted infinite line.
+    Extract points along a predicted line in coordinates [(x, y, intensity), ...]
+    where intensity = heatmap value at that pixel.
+
+    Args:
+        heatmap: Single-channel float heatmap for the specific line with values in [0,1]
+        threshold: Initial threshold for binarization to filter out noise
+        num_random_points: Number of random points to sample from high-intensity regions
 
     Returns:
-        np.ndarray of shape (M,3) containing [x, y, intensity].
+        Array of points shape (M, 3) containing [x, y, intensity]
     """
-    # outlier pruning params
-    max_outlier_dist = 3.0   # px away from the fitted line
-    min_inliers      = 20    # must keep at least this many
+    ys, xs = np.nonzero(heatmap > threshold)
+    if len(xs) == 0:
+        return np.zeros((0, 3), dtype=float)
 
-    # 1) Optionally fuse with the “all lines” channel
-    hm = heatmap.astype(np.float32)
-    if all_lines_heatmap is not None:
-        all_hm = all_lines_heatmap.astype(np.float32)
-        hm = (1 - all_lines_weight) * hm + all_lines_weight * all_hm
+    indices = np.arange(len(xs))
+    chosen_idx = np.random.choice(indices, size=min(len(indices), num_random_points), replace=False)
 
-    # 2) normalize & threshold
-    hm = (hm - hm.min()) / (np.ptp(hm) + 1e-8)
-    bw = (hm > threshold).astype(np.uint8) * 255
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5,5))
-    bw = cv2.morphologyEx(bw, cv2.MORPH_CLOSE, kernel, iterations=1)
+    x_samples = xs[chosen_idx].astype(np.float32)
+    y_samples = ys[chosen_idx].astype(np.float32)
+    intensities = heatmap[ys[chosen_idx], xs[chosen_idx]].astype(np.float32)
 
-    # 3) skeletonize the largest connected blob
-    num_cc, labels = cv2.connectedComponents(bw, connectivity=8)
-    if num_cc <= 1:
-        return np.zeros((0,3), dtype=np.float32)
-    sizes = [(labels==c).sum() for c in range(1, num_cc)]
-    best = np.argmax(sizes) + 1
-    if sizes[best-1] < min_length:
-        return np.zeros((0,3), dtype=np.float32)
-    mask = (labels == best).astype(np.uint8)*255
-    # skel = cv2.ximgproc.thinning(mask)
-    # Use skimage skeletonize instead
-    skel = skeletonize(mask > 0)
-    skel = skel.astype(np.uint8) * 255
+    return np.stack([x_samples, y_samples, intensities], axis=1)
 
-    # 4) pick only high‐intensity skeleton points
-    ys, xs = np.nonzero((skel>0) & (hm>=high_intensity_threshold))
-    if len(xs) < min_inliers:
-        return np.zeros((0,3), dtype=np.float32)
-
-    pts    = np.stack([xs, ys], axis=1).astype(np.float32)  # (N,2)
-    intens = hm[ys, xs].astype(np.float32)                  # (N,)
-
-    # 5) fit infinite line
-    vx, vy, x0, y0 = cv2.fitLine(pts, cv2.DIST_L2, 0, 0.01, 0.01)
-    p0 = np.array([x0[0], y0[0]], dtype=np.float32)
-    v  = np.array([vx[0], vy[0]], dtype=np.float32)
-    v /= np.linalg.norm(v)
-
-    # 6) discard outliers > max_outlier_dist
-    diffs = pts - p0[None,:]
-    # cross‐product magnitude → distance to line
-    dists = np.abs(diffs[:,0]*v[1] - diffs[:,1]*v[0])
-    inliers = dists <= max_outlier_dist
-    if inliers.sum() < min_inliers:
-        return np.zeros((0,3), dtype=np.float32)
-
-    # 7) randomly subsample inliers
-    idxs = np.nonzero(inliers)[0]
-    if idxs.size > num_random_points:
-        idxs = np.random.choice(idxs, size=num_random_points, replace=False)
-
-    xs_f = pts[idxs, 0]
-    ys_f = pts[idxs, 1]
-    i_f  = intens[idxs]
-
-    return np.stack([xs_f, ys_f, i_f], axis=1)  # (M,3)
-
-
-def extract_circle_points_from_heatmap(heatmap: np.ndarray, threshold: float = 0.8, high_intensity_threshold: float = 0.96,
-                                       num_samples: int = 50, num_random_points: int = 50) -> np.ndarray:
+def extract_circle_points_from_heatmap(heatmap: np.ndarray, threshold: float = 0.9,
+                                       num_random_points: int = 100) -> np.ndarray:
     """
-    Extracts robust high-intensity circle points with geometric outlier removal.
+    Extract points along the predicted circle in homogeneous coords [(x,y,1), ...]
+    by sampling high-intensity points and fitting an ellipse.
+
+    Args:
+        heatmap: Single-channel float heatmap with values in [0,1]
+        threshold: Initial threshold for binarization to filter out noise
+        num_random_points: Number of random points to sample from high-intensity regions
+
+    Returns:
+        Array of points in homogeneous coordinates shape (N,3)
     """
-    max_outlier_dist: float = 3.0
-    min_inliers: int = 20
+    # 1) Find all (row=y, col=x) where heatmap > threshold
+    ys, xs = np.nonzero(heatmap > threshold)
 
-    # 1) Normalize heatmap
-    hm = (heatmap - heatmap.min()) / (heatmap.max() - heatmap.min() + 1e-8)
+    # If there are no such pixels, return an empty (0×3) array
+    if len(xs) == 0:
+        return np.zeros((0, 3), dtype=float)
 
-    # 2) Threshold and clean
-    bw = (hm > threshold).astype(np.uint8) * 255
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-    bw = cv2.morphologyEx(bw, cv2.MORPH_CLOSE, kernel, iterations=1)
+    # 2) Randomly pick up to num_random_points of those indices
+    total = len(xs)
+    if total > num_random_points:
+        chosen_idx = np.random.choice(total, size=num_random_points, replace=False)
+    else:
+        chosen_idx = np.arange(total)
 
-    # 3) High-intensity mask
-    high_mask = (hm >= high_intensity_threshold) & (bw > 0)
-    ys, xs = np.nonzero(high_mask)
+    # 3) Build homogeneous coordinates (x, y, 1)
+    x_samples = xs[chosen_idx].astype(np.float32)
+    y_samples = ys[chosen_idx].astype(np.float32)
+    intensities = heatmap[ys[chosen_idx], xs[chosen_idx]].astype(np.float32)
+    homo_pts = np.stack([x_samples, y_samples, intensities], axis=1)  # shape (M, 3)
 
-    if len(xs) < min_inliers:
-        return np.zeros((0, 3), dtype=np.float32)
-
-    # 4) Randomly subsample
-    idx = np.random.choice(len(xs), size=min(len(xs), num_random_points), replace=False)
-    pts = np.stack([xs[idx], ys[idx]], axis=1).astype(np.float32)
-
-    # 5) Fit ellipse
-    if len(pts) < 5:
-        return np.zeros((0, 3), dtype=np.float32)
-    ellipse = cv2.fitEllipse(pts)
-    center = np.array(ellipse[0])
-    axes = np.array(ellipse[1]) / 2.0
-    angle = np.deg2rad(ellipse[2])
-
-    # 6) Compute distances from ellipse perimeter
-    cos_a, sin_a = np.cos(angle), np.sin(angle)
-    delta = pts - center
-    rotated = np.stack([
-        cos_a * delta[:, 0] + sin_a * delta[:, 1],
-       -sin_a * delta[:, 0] + cos_a * delta[:, 1]
-    ], axis=1)
-    normed = rotated / axes
-    dists = np.abs(np.linalg.norm(normed, axis=1) - 1.0)
-
-    # 7) Filter by distance to ellipse
-    inlier_mask = dists < (max_outlier_dist / np.mean(axes))
-    if inlier_mask.sum() < min_inliers:
-        return np.zeros((0, 3), dtype=np.float32)
-
-    inlier_pts = pts[inlier_mask]
-    inlier_x = inlier_pts[:, 0]
-    inlier_y = inlier_pts[:, 1]
-    inlier_i = heatmap[inlier_y.astype(int), inlier_x.astype(int)]
-
-    # 8) Return in homogeneous form
-    return np.stack([inlier_x, inlier_y, inlier_i], axis=1)
-
+    return homo_pts
 
 def get_line(p0, p1):
     """
@@ -790,6 +715,134 @@ def circle_conic_matrix(center, rad):
                   [0.0, 1.0, -center[1]],
                   [-center[0], -center[1], center[0] ** 2 + center[1] ** 2 - rad ** 2]])
     return C
+
+
+def project_point_to_ellipse_minimize(point, ellipse, max_shift=15.0):
+    """
+    Project a point onto the nearest point of an ellipse, with a maximum shift constraint.
+
+    Args:
+        point: Point in homogeneous coordinates [x, y, 1]
+        ellipse: Ellipse parameters (center, (axes), angle) from cv2.fitEllipse
+        max_shift: Maximum allowed shift distance from the original point
+
+    Returns:
+        Projected point in homogeneous coordinates [x, y, 1]
+    """
+    if ellipse is None:
+        return point
+
+    # Extract ellipse parameters
+    center, axes, angle = ellipse
+    a, b = axes[0] / 2.0, axes[1] / 2.0  # Semi-major and semi-minor axes
+    angle_rad = np.deg2rad(angle)
+
+    # Convert to standard form centered at origin and aligned with axes
+    x, y = point[:2]
+    x0, y0 = center
+
+    # Translate point to ellipse center
+    xt = x - x0
+    yt = y - y0
+
+    # Rotate point to align with ellipse axes
+    cos_angle = np.cos(angle_rad)
+    sin_angle = np.sin(angle_rad)
+    xr = xt * cos_angle + yt * sin_angle
+    yr = -xt * sin_angle + yt * cos_angle
+
+    # Find the angle of the point in this coordinate system
+    theta = np.arctan2(yr * a, xr * b)
+
+    # Find the corresponding point on the ellipse (unconstrained projection)
+    xe = a * np.cos(theta) * cos_angle - b * np.sin(theta) * sin_angle + x0
+    ye = a * np.cos(theta) * sin_angle + b * np.sin(theta) * cos_angle + y0
+    projected = np.array([xe, ye])
+
+    # Compute the shift distance
+    shift_dist = np.linalg.norm(projected - point[:2])
+
+    if shift_dist > max_shift:
+        # Constrain the shift to max_shift by scaling the displacement vector
+        direction = (projected - point[:2]) / shift_dist  # Unit vector in the direction of the shift
+        projected = point[:2] + direction * max_shift  # Move only max_shift distance in that direction
+
+    return np.array([projected[0], projected[1], 1.0])
+
+
+def project_point_to_line_minimize(point, p0, v, max_shift=15.0):
+    """Project a point onto the line to minimize distance, with a maximum shift constraint.
+
+    Args:
+        point: Point in homogeneous coordinates [x, y, 1]
+        p0: A point on the line [x0, y0]
+        v: Direction vector of the line [vx, vy]
+        max_shift: Maximum allowed shift distance from the original point
+
+    Returns:
+        Projected point in homogeneous coordinates [x, y, 1]
+    """
+    p = np.array(point[:2])
+    w = p - p0
+    t = np.dot(w, v) / np.dot(v, v)
+    projected = p0 + t * v  # Unconstrained projected point
+
+    # Compute the shift distance
+    shift_dist = np.linalg.norm(projected - p)
+
+    if shift_dist > max_shift:
+        # Constrain the shift to max_shift by scaling the displacement vector
+        direction = (projected - p) / shift_dist  # Unit vector in the direction of the shift
+        projected = p + direction * max_shift  # Move only max_shift distance in that direction
+
+    return np.hstack([projected, 1.0])
+
+
+def fit_ellipse_to_points(points):
+    """Fit an ellipse to a set of points.
+
+    Args:
+        points: List of [x, y, 1.0] points in homogeneous coordinates
+
+    Returns:
+        tuple: (center, (major_axis, minor_axis), angle) if successful, None otherwise
+        - center: (x, y) coordinates of the ellipse center
+        - axes: (major_axis_length, minor_axis_length)
+        - angle: Rotation angle in degrees
+    """
+    if len(points) < 5:
+        return None  # Need at least 5 points for cv2.fitEllipse
+    # Extract 2D coordinates, ignoring the homogeneous coordinate
+    coords = np.array([pt[:2] for pt in points], dtype=np.float32)
+    if len(coords) < 5:
+        return None  # Double-check after conversion
+    try:
+        # Fit ellipse using OpenCV
+        ellipse = cv2.fitEllipse(coords)
+        return ellipse
+    except cv2.error:
+        return None  # Handle cases where fitting fails (e.g., collinear points)
+
+
+def validate_refined_point(original_pt, refined_pt, max_distance=40):
+    """
+    Validate if the refined point is within reasonable bounds of the original.
+    Returns True if valid, False if suspicious.
+
+    Args:
+        original_pt: Original keypoint coordinates [x, y, 1]
+        refined_pt: Refined keypoint coordinates [x, y, 1]
+        max_distance: Maximum allowed Euclidean distance between original and refined points
+
+    Returns:
+        bool: True if the refined point is within max_distance, False otherwise
+    """
+    if original_pt[0] == 0 and original_pt[1] == 0:
+        return False
+
+    # Calculate Euclidean distance between original and refined points
+    dist = np.linalg.norm(original_pt[:2] - refined_pt[:2])
+    return dist <= max_distance
 
 
 def convert_and_normalize_keypoints(
@@ -975,6 +1028,29 @@ def predict_soccernet_inference(
         'Circle right': [[98.50, 46.31, 1], [98.50, 31.69, 1]],
     }
 
+    pitch_line_keypoints = {
+        'Big rect. left bottom': [6, 19],
+        'Big rect. left top': [1, 15],
+        'Big rect. left main': [15, 16, 17, 18, 19],
+        'Big rect. right bottom': [81, 95],
+        'Big rect. right top': [77, 90],
+        'Big rect. right main': [77, 78, 79, 80, 81],
+        'Small rect. left bottom': [5, 11],
+        'Small rect. left top': [2, 9],
+        'Small rect. left main': [9, 10, 11],
+        'Small rect. right bottom': [87, 94],
+        'Small rect. right top': [85, 91],
+        'Small rect. right main': [85, 86, 87],
+        'Side line bottom': [7, 12, 20, 28, 35, 42, 51, 60, 67, 74, 82, 88, 96],
+        'Side line top': [0, 8, 14, 22, 29, 36, 45, 54, 61, 68, 76, 84, 89],
+        'Side line left': [0, 1, 2, 3, 4, 5, 6, 7],
+        'Side line right': [89, 90, 91, 92, 93, 94, 95, 96],
+        'Middle line': [45, 46, 47, 48, 49, 50, 51],
+        'Circle central': [39, 57], #47, 48, 49
+        'Circle left': [16, 18, 21],
+        'Circle right': [75, 78, 80]
+    }
+
     line_names = [
         "Big rect. left bottom", "Big rect. left main", "Big rect. left top",
         "Big rect. right bottom", "Big rect. right main", "Big rect. right top",
@@ -1073,7 +1149,7 @@ def predict_soccernet_inference(
             filtered_keypoints = []
             for kp_idx in range(num_keypoints):
                 conf = maxvals_batch[0, kp_idx]  # Batch size is 1
-                if conf >= 0.7:
+                if conf >= 0.4:
                     pred_kp = preds_batch[0, kp_idx]
                     x = int(np.rint(pred_kp[0] * scale_x))
                     y = int(np.rint(pred_kp[1] * scale_y))
@@ -1108,12 +1184,42 @@ def predict_soccernet_inference(
                 conf = confidence_scores[0, line_idx].item()
                 line_detected[line_name] = (conf >= 0.8)
 
+            # 2) LEFT/RIGHT VETO LOGIC
+            left_keys = {
+                "Big rect. left bottom", "Big rect. left main", "Big rect. left top",
+                "Small rect. left bottom", "Small rect. left main", "Small rect. left top"
+            }
+            right_keys = {
+                "Big rect. right bottom", "Big rect. right main", "Big rect. right top",
+                "Small rect. right bottom", "Small rect. right main", "Small rect. right top"
+            }
+            full_pitch = line_detected["Middle line"] and line_detected["Circle central"]
+
+            left_count = sum(line_detected[k] for k in left_keys)
+            right_count = sum(line_detected[k] for k in right_keys)
+
+            # 3) Dominance veto (only when NOT full‐pitch)
+            MIN_CLUSTER = 2  # require at least this many on one side
+            DOM_RATIO = 2.0  # require this side to outnumber the other by ≥ DOM_RATIO
+
+            if not full_pitch:
+                # If left clearly dominates, kill stray rights
+                if left_count >= MIN_CLUSTER and left_count >= DOM_RATIO * right_count:
+                    for k in right_keys:
+                        line_detected[k] = False
+
+                # If right clearly dominates, kill stray lefts
+                elif right_count >= MIN_CLUSTER and right_count >= DOM_RATIO * left_count:
+                    for k in left_keys:
+                        line_detected[k] = False
+
             # Extract "All lines" heatmap
             all_lines_idx = line_names.index("All lines")
             all_lines_heatmap = pred_lines[0, all_lines_idx].cpu().numpy()
 
             detected_line_points = {}
             raw_circle_pts = []
+            shape_fits = {}
 
             for line_name in line_names:
                 if line_name == "All lines":
@@ -1125,22 +1231,105 @@ def predict_soccernet_inference(
                 heatmap = pred_lines[0, line_idx].cpu().numpy()
 
                 if line_name == "Circle central":
-                    points = extract_circle_points_from_heatmap(heatmap, threshold=0.9,
-                                                                high_intensity_threshold=0.96,
-                                                                num_samples=0, num_random_points=100)
+                    points = extract_circle_points_from_heatmap(heatmap, threshold=0.9, num_random_points=100)
                     if len(points) > 0:
                         # Scale points
                         scaled_points = [[pt[0] * scale_x, pt[1] * scale_y, pt[2]] for pt in points]
                         raw_circle_pts = scaled_points
+
                 elif line_name != "All lines":
-                    points = extract_line_points_from_heatmap(heatmap, all_lines_heatmap=all_lines_heatmap,
-                                                                threshold=0.93, high_intensity_threshold=0.9,
-                                                                num_samples=100, num_random_points=100,
-                                                                min_length=15,
-                                                                all_lines_weight=0.3)
+                    points = extract_line_points_from_heatmap(heatmap, threshold=0.93, num_random_points=100)
+                
                     if len(points) > 0:
                         scaled_points = [[pt[0] * scale_x, pt[1] * scale_y, pt[2]] for pt in points]
                         detected_line_points[line_name] = np.array(scaled_points)
+                        
+                        # Fit line to scaled points
+                        p0, v = fit_line_to_points(scaled_points)
+                        if p0 is not None:
+                            shape_fits[line_name] = (p0, v)
+
+            # --- KEYPOINT REFINEMENT ---
+            refined_pts = pts.copy()
+            max_shift = 15.0 # Define max_shift for refinement
+            
+            # Step 2.2: Build a mapping of keypoints to their associated lines
+            keypoint_to_lines = {}
+            for line_name, kp_indices in pitch_line_keypoints.items():
+                for kp_idx in kp_indices:
+                    if kp_idx not in keypoint_to_lines:
+                        keypoint_to_lines[kp_idx] = []
+                    keypoint_to_lines[kp_idx].append(line_name)
+
+            # Step 2.3: Refine keypoints, prioritizing intersections
+            for kp_idx in range(num_keypoints):
+                if kp_idx >= len(refined_pts) or refined_pts[kp_idx, 0] == 0 or refined_pts[kp_idx, 1] == 0:
+                    continue
+
+                associated_lines = keypoint_to_lines.get(kp_idx, [])
+                if len(associated_lines) == 2:
+                    line1, line2 = associated_lines
+                    if line_detected.get(line1, False) and line_detected.get(line2, False):
+                        if line1 in ["Circle central", "Circle left", "Circle right"] or \
+                           line2 in ["Circle central", "Circle left", "Circle right"]:
+                            continue
+                        p0_1, v1 = shape_fits.get(line1, (None, None))
+                        p0_2, v2 = shape_fits.get(line2, (None, None))
+                        if p0_1 is not None and v1 is not None and p0_2 is not None and v2 is not None:
+                            A = np.array([v1, -v2]).T
+                            b = p0_2 - p0_1
+                            try:
+                                t = np.linalg.solve(A, b)
+                                intersection = p0_1 + t[0] * v1
+                                # Constrain the shift for intersection points
+                                shift_dist = np.linalg.norm(intersection - refined_pts[kp_idx][:2])
+                                if shift_dist > max_shift:
+                                    direction = (intersection - refined_pts[kp_idx][:2]) / shift_dist
+                                    intersection = refined_pts[kp_idx][:2] + direction * max_shift
+                                refined_pts[kp_idx] = [intersection[0], intersection[1], refined_pts[kp_idx, 2]]
+                            except np.linalg.LinAlgError:
+                                pass
+
+            # Step 2.4: Refine remaining keypoints using single-line or ellipse projection
+            for line_name, kp_indices in pitch_line_keypoints.items():
+                if not line_detected[line_name]:
+                    continue
+
+                for kp_idx in kp_indices:
+                    if kp_idx >= len(refined_pts) or refined_pts[kp_idx, 0] == 0 or refined_pts[kp_idx, 1] == 0:
+                        continue
+
+                    associated_lines = keypoint_to_lines.get(kp_idx, [])
+                    if len(associated_lines) == 2 and line_name not in ["Circle central", "Circle left", "Circle right"] and all(
+                            line_detected.get(ln, False) for ln in associated_lines):
+                        continue
+
+                    shape = shape_fits.get(line_name)
+                    if shape:
+                        if len(shape) == 3: # Ellipse
+                            refined_point = project_point_to_ellipse_minimize(refined_pts[kp_idx], shape,
+                                                                              max_shift=max_shift)
+                        elif len(shape) == 2: # Line
+                            p0, v = shape
+                            refined_point = project_point_to_line_minimize(refined_pts[kp_idx], p0, v,
+                                                                           max_shift=max_shift)
+                        else:
+                            continue
+
+                        # Validate the shift (optional, since we already constrained it)
+                        if validate_refined_point(refined_pts[kp_idx], refined_point, max_distance=max_shift):
+                            refined_pts[kp_idx] = [refined_point[0], refined_point[1],
+                                                   refined_pts[kp_idx, 2]]
+                        else:
+                            refined_pts[kp_idx] = refined_pts[
+                                kp_idx]  # Keep the current position (might be from intersection)
+
+            # Step 2.5: Invalidate keypoints associated with undetected lines
+            for line_name, kp_indices in pitch_line_keypoints.items():
+                if not line_detected.get(line_name, False):
+                    for kp_idx in kp_indices:
+                        if kp_idx < len(refined_pts):
+                            refined_pts[kp_idx] = [0, 0, 0.0]
 
             # Collect all points for normalization
             valid_idx = [i for i, (x, y, _) in enumerate(pts) if x != 0 or y != 0]
@@ -1234,13 +1423,44 @@ def predict_soccernet_inference(
                         homography_matrix = orig_homography.astype(np.float32)
                     else:
                         print(f"Singular matrix for frame {f_fn}")
-                        homography_matrix = np.eye(3, dtype=np.float32)
+                        homography_matrix = None
                 except Exception as e:
                     print(f"Homography estimation failed for {f_fn}: {e}")
+                    homography_matrix = None
+
+            if homography_matrix is None:
+                # Fallback to point-based if no lines/points found or estimation failed
+                image_pts_with_idx = []
+                template_pts_with_idx = []
+
+                # Reuse keypoint_to_lines from earlier
+                
+                for kp_idx in range(num_keypoints):
+                    if kp_idx < len(refined_pts) and refined_pts[kp_idx, 0] != 0 and refined_pts[kp_idx, 1] != 0:
+                        line_association = keypoint_to_lines.get(kp_idx, [])
+                        if not line_association or all(
+                                line_detected.get(line_name, False) for line_name in line_association):
+                            image_pts_with_idx.append((refined_pts[kp_idx], kp_idx))
+                            template_kpt = template_kpts[kp_idx]
+                            template_pts_with_idx.append(([template_kpt[0], template_kpt[1], 1.0], kp_idx))
+
+                image_pts = np.array([pt[0] for pt in image_pts_with_idx])
+                template_pts = np.array([pt[0] for pt in template_pts_with_idx])
+                
+                if image_pts.shape[0] >= 4:
+                    # Compute homography in normalized space
+                    orig_homography, _ = cv2.findHomography(image_pts[:, :2], template_pts[:, :2],
+                                                            cv2.RANSAC,
+                                                            ransacReprojThreshold=10,
+                                                            maxIters=3000)
+                    if orig_homography is not None and np.linalg.det(orig_homography) != 0:
+                        homography_matrix = orig_homography.astype(np.float32)
+                    else:
+                        print(f"Cannot generate valid homography at frame {f_fn}")
+                        homography_matrix = np.eye(3, dtype=np.float32)
+                else:
+                    print(f"Insufficient {len(image_pts)} keypoints detected at frame {f_fn}")
                     homography_matrix = np.eye(3, dtype=np.float32)
-            else:
-                # Fallback to point-based if no lines/points found (or just use identity)
-                homography_matrix = np.eye(3, dtype=np.float32)
 
             # Save homography
             np.save(os.path.join(npy_directory, f"{f_fn}.npy"), homography_matrix)
@@ -1263,6 +1483,20 @@ def predict_soccernet_inference(
                         / 2
                     ).astype(np.uint8)
                     vis_image[valid_index] = overlay
+                    
+                    # Draw detected line points (Blue)
+                    for line_name, pts in detected_line_points.items():
+                        for pt in pts:
+                            cv2.circle(vis_image, (int(pt[0]), int(pt[1])), 2, (255, 0, 0), -1)
+
+                    # Draw circle points (Green)
+                    for pt in raw_circle_pts:
+                        cv2.circle(vis_image, (int(pt[0]), int(pt[1])), 2, (0, 255, 0), -1)
+
+                    # Draw predicted keypoints (Red)
+                    for pt in refined_pts:
+                        if pt[0] != 0 or pt[1] != 0:
+                            cv2.circle(vis_image, (int(pt[0]), int(pt[1])), 3, (0, 0, 255), -1)
                     
 
 
