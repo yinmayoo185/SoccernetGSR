@@ -1,8 +1,15 @@
 # SoccerNet Game State Reconstruction (GSR)
 
+
 ## Broadcast2Pitch: Game State Reconstruction from Unconstrained Soccer Videos (WACV 2026)
 
-**Winner of the SoccerNet Game State Reconstruction 2025 Challenge**
+** 🏆 Winner of the SoccerNet Game State Reconstruction 2025 Challenge 🏆 **
+
+## Qualitative Results
+
+| Default Model | Our Method |
+| :---: | :---: |
+| <img src="vis/baseline.gif" width="100%"> | <img src="vis/ours.gif" width="100%"> |
 
 **Affiliation:** Human Data Intelligence Lab, Korea Institute of Science and Technology (KIST), Seoul, Republic of Korea
 
