@@ -1,22 +1,17 @@
-# SoccerNet Game State Reconstruction (GSR)
+# Broadcast2Pitch: Game State Reconstruction from Unconstrained Soccer Videos (WACV 2026 Oral Presentation)
 
+## 🏆 Winner of the SoccerNet Game State Reconstruction 2025 Challenge 🏆
 
-## Broadcast2Pitch: Game State Reconstruction from Unconstrained Soccer Videos (WACV 2026)
-
-** 🏆 Winner of the SoccerNet Game State Reconstruction 2025 Challenge 🏆 **
-
-## Qualitative Results
-
-| Default Model | Our Method |
+| Baseline Model | Our Method |
 | :---: | :---: |
 | <img src="vis/baseline.gif" width="100%"> | <img src="vis/ours.gif" width="100%"> |
 
 **Affiliation:** Human Data Intelligence Lab, Korea Institute of Science and Technology (KIST), Seoul, Republic of Korea
 
-This repository contains the official implementation for the SoccerNet Game State Reconstruction (GSR) task. It includes modules for camera calibration (homography estimation), player tracking, re-identification (ReID), and role/jersey number recognition using CLIP and LLaMA models.
+This repository contains the official implementation for the SoccerNet Game State Reconstruction (GSR) task. It includes modules for camera calibration (homography estimation), player tracking, re-identification (ReID), role/jersey number recognition using CLIP and LLaMA models, and tracklet refinement.
 
 > [!NOTE]
-> The homography estimation (Sports Field Registration) approach in this repository follows the WACV paper approach, which differs slightly from the method described in our [arXiv paper](https://arxiv.org/pdf/2508.19182).
+> The homography estimation (Sports Field Registration) approach in this repository follows our WACV paper approach, which differs slightly from the method described in [arXiv paper](https://arxiv.org/pdf/2508.19182).
 
 ## Installation
 
