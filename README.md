@@ -1,4 +1,4 @@
-# Broadcast2Pitch: Game State Reconstruction from Unconstrained Soccer Videos (WACV 2026 Oral Presentation)
+# Broadcast2Pitch: Game State Reconstruction from Unconstrained Soccer Videos (WACV 2026 Oral) ⚽
 
 ## 🏆 Winner of the SoccerNet Game State Reconstruction 2025 Challenge 🏆
 
