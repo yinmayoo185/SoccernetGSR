@@ -2,7 +2,7 @@
 
 ## 🏆 Winner of the SoccerNet Game State Reconstruction 2025 Challenge 🏆
 
-| Baseline Model | Our Method |
+| Baseline Method | Our Method |
 | :---: | :---: |
 | <img src="vis/baseline.gif" width="100%"> | <img src="vis/ours.gif" width="100%"> |
 
