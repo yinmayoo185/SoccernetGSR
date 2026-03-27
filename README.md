@@ -1,6 +1,6 @@
-# ⚽ Broadcast2Pitch: Game State Reconstruction from Unconstrained Soccer Videos 🎉WACV 2026 Best Paper: Application🎉 
+# ⚽ Broadcast2Pitch: Game State Reconstruction from Unconstrained Soccer Videos ⚽ 
 
-## 🏆 Winner of the SoccerNet Game State Reconstruction 2025 Challenge 🏆
+## 🎉 WACV 2026 Best Paper: Application <br> 🏆 Winner of the SoccerNet Game State Reconstruction 2025 Challenge 
 
 | Baseline Method | Our Method |
 | :---: | :---: |
