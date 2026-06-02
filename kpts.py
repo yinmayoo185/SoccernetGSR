@@ -595,69 +595,122 @@ class SoccernetDataset(Dataset):
 
 def extract_line_points_from_heatmap(
     heatmap: np.ndarray,
-    threshold: float = 0.9,
-    num_random_points: int = 100
+    all_lines_heatmap: np.ndarray = None,
+    threshold: float = 0.8,
+    high_intensity_threshold: float = 0.96,
+    num_samples: int = 100,
+    num_random_points: int = 100,
+    min_length: float = 100,
+    all_lines_weight: float = 0.5
 ) -> np.ndarray:
     """
-    Extract points along a predicted line in coordinates [(x, y, intensity), ...]
-    where intensity = heatmap value at that pixel.
-
-    Args:
-        heatmap: Single-channel float heatmap for the specific line with values in [0,1]
-        threshold: Initial threshold for binarization to filter out noise
-        num_random_points: Number of random points to sample from high-intensity regions
+    Robustly extract high-intensity skeleton points from a line heatmap,
+    then throw away any that lie more than `max_outlier_dist` px from
+    the fitted infinite line. Uniformly samples along the fitted line.
 
     Returns:
-        Array of points shape (M, 3) containing [x, y, intensity]
+        np.ndarray of shape (M,3) containing [x, y, intensity].
     """
-    ys, xs = np.nonzero(heatmap > threshold)
-    if len(xs) == 0:
-        return np.zeros((0, 3), dtype=float)
+    max_outlier_dist = 3.0
+    min_inliers = 20
 
-    indices = np.arange(len(xs))
-    chosen_idx = np.random.choice(indices, size=min(len(indices), num_random_points), replace=False)
+    hm = heatmap.astype(np.float32)
+    if all_lines_heatmap is not None:
+        all_hm = all_lines_heatmap.astype(np.float32)
+        hm = (1 - all_lines_weight) * hm + all_lines_weight * all_hm
 
-    x_samples = xs[chosen_idx].astype(np.float32)
-    y_samples = ys[chosen_idx].astype(np.float32)
-    intensities = heatmap[ys[chosen_idx], xs[chosen_idx]].astype(np.float32)
+    hm = (hm - hm.min()) / (np.ptp(hm) + 1e-8)
+    bw = (hm > threshold).astype(np.uint8) * 255
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+    bw = cv2.morphologyEx(bw, cv2.MORPH_CLOSE, kernel, iterations=1)
 
-    return np.stack([x_samples, y_samples, intensities], axis=1)
+    num_cc, labels = cv2.connectedComponents(bw, connectivity=8)
+    if num_cc <= 1:
+        return np.zeros((0, 3), dtype=np.float32)
+    sizes = [(labels == c).sum() for c in range(1, num_cc)]
+    best = np.argmax(sizes) + 1
+    if sizes[best - 1] < min_length:
+        return np.zeros((0, 3), dtype=np.float32)
+    mask = (labels == best).astype(np.uint8) * 255
+    skel = cv2.ximgproc.thinning(mask)
 
-def extract_circle_points_from_heatmap(heatmap: np.ndarray, threshold: float = 0.9,
-                                       num_random_points: int = 100) -> np.ndarray:
+    ys, xs = np.nonzero((skel > 0) & (hm >= high_intensity_threshold))
+    if len(xs) < min_inliers:
+        return np.zeros((0, 3), dtype=np.float32)
+
+    pts = np.stack([xs, ys], axis=1).astype(np.float32)
+    intens = hm[ys, xs].astype(np.float32)
+
+    vx, vy, x0, y0 = cv2.fitLine(pts, cv2.DIST_L2, 0, 0.01, 0.01)
+    p0 = np.array([x0[0], y0[0]], dtype=np.float32)
+    v = np.array([vx[0], vy[0]], dtype=np.float32)
+    v /= np.linalg.norm(v)
+
+    t = (pts - p0) @ v
+    t_min, t_max = t.min(), t.max()
+    if (t_max - t_min) < min_length:
+        return np.zeros((0, 3), dtype=np.float32)
+
+    ts = np.linspace(t_min, t_max, num_samples)
+    sample_xy = p0[None, :] + np.outer(ts, v)
+
+    samp_ix = np.clip(np.round(sample_xy).astype(int),
+                      0, np.array(hm.shape[::-1]) - 1)
+    vals = hm[samp_ix[:, 1], samp_ix[:, 0]]
+
+    return np.stack([sample_xy[:, 0], sample_xy[:, 1], vals], axis=1)
+
+def extract_circle_points_from_heatmap(heatmap: np.ndarray, threshold: float = 0.8,
+                                       high_intensity_threshold: float = 0.96,
+                                       num_samples: int = 50,
+                                       num_random_points: int = 50) -> np.ndarray:
     """
-    Extract points along the predicted circle in homogeneous coords [(x,y,1), ...]
-    by sampling high-intensity points and fitting an ellipse.
-
-    Args:
-        heatmap: Single-channel float heatmap with values in [0,1]
-        threshold: Initial threshold for binarization to filter out noise
-        num_random_points: Number of random points to sample from high-intensity regions
-
-    Returns:
-        Array of points in homogeneous coordinates shape (N,3)
+    Extracts robust high-intensity circle points with geometric outlier removal.
     """
-    # 1) Find all (row=y, col=x) where heatmap > threshold
-    ys, xs = np.nonzero(heatmap > threshold)
+    max_outlier_dist: float = 3.0
+    min_inliers: int = 20
 
-    # If there are no such pixels, return an empty (0×3) array
-    if len(xs) == 0:
-        return np.zeros((0, 3), dtype=float)
+    hm = (heatmap - heatmap.min()) / (heatmap.max() - heatmap.min() + 1e-8)
 
-    # 2) Randomly pick up to num_random_points of those indices
-    total = len(xs)
-    if total > num_random_points:
-        chosen_idx = np.random.choice(total, size=num_random_points, replace=False)
-    else:
-        chosen_idx = np.arange(total)
+    bw = (hm > threshold).astype(np.uint8) * 255
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+    bw = cv2.morphologyEx(bw, cv2.MORPH_CLOSE, kernel, iterations=1)
 
-    # 3) Build homogeneous coordinates (x, y, 1)
-    x_samples = xs[chosen_idx].astype(np.float32)
-    y_samples = ys[chosen_idx].astype(np.float32)
-    intensities = heatmap[ys[chosen_idx], xs[chosen_idx]].astype(np.float32)
-    homo_pts = np.stack([x_samples, y_samples, intensities], axis=1)  # shape (M, 3)
+    high_mask = (hm >= high_intensity_threshold) & (bw > 0)
+    ys, xs = np.nonzero(high_mask)
 
-    return homo_pts
+    if len(xs) < min_inliers:
+        return np.zeros((0, 3), dtype=np.float32)
+
+    idx = np.random.choice(len(xs), size=min(len(xs), num_random_points), replace=False)
+    pts = np.stack([xs[idx], ys[idx]], axis=1).astype(np.float32)
+
+    if len(pts) < 5:
+        return np.zeros((0, 3), dtype=np.float32)
+    ellipse = cv2.fitEllipse(pts)
+    center = np.array(ellipse[0])
+    axes = np.array(ellipse[1]) / 2.0
+    angle = np.deg2rad(ellipse[2])
+
+    cos_a, sin_a = np.cos(angle), np.sin(angle)
+    delta = pts - center
+    rotated = np.stack([
+        cos_a * delta[:, 0] + sin_a * delta[:, 1],
+       -sin_a * delta[:, 0] + cos_a * delta[:, 1]
+    ], axis=1)
+    normed = rotated / axes
+    dists = np.abs(np.linalg.norm(normed, axis=1) - 1.0)
+
+    inlier_mask = dists < (max_outlier_dist / np.mean(axes))
+    if inlier_mask.sum() < min_inliers:
+        return np.zeros((0, 3), dtype=np.float32)
+
+    inlier_pts = pts[inlier_mask]
+    inlier_x = inlier_pts[:, 0]
+    inlier_y = inlier_pts[:, 1]
+    inlier_i = heatmap[inlier_y.astype(int), inlier_x.astype(int)]
+
+    return np.stack([inlier_x, inlier_y, inlier_i], axis=1)
 
 def get_line(p0, p1):
     """
@@ -824,7 +877,7 @@ def fit_ellipse_to_points(points):
         return None  # Handle cases where fitting fails (e.g., collinear points)
 
 
-def validate_refined_point(original_pt, refined_pt, max_distance=40):
+def validate_refined_point(original_pt, refined_pt, max_distance=40.0):
     """
     Validate if the refined point is within reasonable bounds of the original.
     Returns True if valid, False if suspicious.
@@ -896,9 +949,8 @@ def get_inv_residual_line_circle_points_middle_pair(
         for (line, points), w in zip(line_points_pair, line_confidences):
             l2 = H_inv.T @ line
             for x, y, intensity in points:
-                raw = float(np.dot([x, y, 1.0], l2)) 
+                raw = float(np.dot([x, y, 1.0], l2))
                 res.append(intensity * raw)
-
 
     if len(circle_points):
         C_tr = H_inv.T @ C @ H_inv
@@ -909,13 +961,11 @@ def get_inv_residual_line_circle_points_middle_pair(
             res.append((raw / norm))
 
     if len(line_points_pair) < 5 and img_h.shape[0] >= 4:
-        # project all image points → template at once
         proj = (H_inv @ img_h.T).T  # (M,3)
         xy = proj[:, :2] / proj[:, 2:3]  # (M,2)
         true = tmp_h[:, :2] / tmp_h[:, 2:3]  # (M,2)
         dists = np.linalg.norm(xy - true, axis=1)
 
-        # weigh each reprojection distance by its confidence
         for dist, conf in zip(dists, confs):
             res.append(conf * dist)
 
@@ -1005,7 +1055,7 @@ def predict_soccernet_inference(
     hm_size = (384, 384)
     distance_threshold = 30  # Adjust as needed
 
-    # Define line definitions
+    # # Define line definitions
     pitch_line_endpoints = {
         'Big rect. left top': [[10.0, 18.84, 1], [26.50, 18.84, 1]],
         'Big rect. left bottom': [[10.0, 59.16, 1], [26.50, 59.16, 1]],
@@ -1226,32 +1276,39 @@ def predict_soccernet_inference(
                     continue
                 if not line_detected[line_name]:
                     continue
-                
+
                 line_idx = line_names.index(line_name)
                 heatmap = pred_lines[0, line_idx].cpu().numpy()
 
-                if line_name == "Circle central":
-                    points = extract_circle_points_from_heatmap(heatmap, threshold=0.9, num_random_points=100)
+                if line_name in ["Circle central", "Circle left", "Circle right"]:
+                    points = extract_circle_points_from_heatmap(
+                        heatmap, threshold=0.9,
+                        high_intensity_threshold=0.96,
+                        num_samples=0, num_random_points=100)
                     if len(points) > 0:
-                        # Scale points
                         scaled_points = [[pt[0] * scale_x, pt[1] * scale_y, pt[2]] for pt in points]
-                        raw_circle_pts = scaled_points
+                        if line_name == "Circle central":
+                            raw_circle_pts = scaled_points
 
                 elif line_name != "All lines":
-                    points = extract_line_points_from_heatmap(heatmap, threshold=0.93, num_random_points=100)
-                
+                    points = extract_line_points_from_heatmap(
+                        heatmap, all_lines_heatmap=all_lines_heatmap,
+                        threshold=0.93, high_intensity_threshold=0.9,
+                        num_samples=100, num_random_points=100,
+                        min_length=15, all_lines_weight=0.3)
+
                     if len(points) > 0:
                         scaled_points = [[pt[0] * scale_x, pt[1] * scale_y, pt[2]] for pt in points]
-                        detected_line_points[line_name] = np.array(scaled_points)
-                        
-                        # Fit line to scaled points
+                        scaled_points = np.array(scaled_points)
+                        detected_line_points[line_name] = scaled_points
+
                         p0, v = fit_line_to_points(scaled_points)
                         if p0 is not None:
                             shape_fits[line_name] = (p0, v)
 
             # --- KEYPOINT REFINEMENT ---
             refined_pts = pts.copy()
-            max_shift = 15.0 # Define max_shift for refinement
+            max_shift = 70.0
             
             # Step 2.2: Build a mapping of keypoints to their associated lines
             keypoint_to_lines = {}
@@ -1332,8 +1389,7 @@ def predict_soccernet_inference(
                             refined_pts[kp_idx] = [0, 0, 0.0]
 
             # Collect all points for normalization
-            valid_idx = [i for i, (x, y, _) in enumerate(pts) if x != 0 or y != 0]
-            refined_pts = pts # Using pts as refined_pts for now
+            valid_idx = [i for i, (x, y, _) in enumerate(refined_pts) if x != 0 or y != 0]
             
             all_img_pts = []
             if len(valid_idx) > 0:
@@ -1585,7 +1641,7 @@ def predict(
     img_path,
     result_dir,
     checkpoints="checkpoints/SoccernetGSR_EfficientNet_Best.pth",
-    template_image="template/Pitch_Radar.png",
+    template_image="template/Radar_Dimen.png",
     template_npy="template/soccernet_template_97.npy",
     save_viz=False,
     verbose=True,
@@ -1695,7 +1751,7 @@ if __name__ == "__main__":
             img_path=img_path,
             result_dir=result_dir,
             checkpoints="checkpoints/SoccernetGSR_EfficientNet_Best.pth",
-            template_image="template/Pitch_Radar.png",
+            template_image="template/Radar_Dimen.png",
             template_npy="template/soccernet_template_97.npy",
             save_viz=False,
             verbose=True,

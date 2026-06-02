@@ -8,7 +8,7 @@ h5py
 Pillow
 six
 scipy
-opencv-python
+opencv-contrib-python
 matplotlib
 yacs
 gdown
@@ -35,5 +35,6 @@ regex
 cython_bbox
 ninja
 rich
+scikit-image
 # torchreid is often installed via: pip install git+https://github.com/KaiyangZhou/deep-person-reid.git
 clip @ git+https://github.com/openai/CLIP.git
